@@ -1,0 +1,21 @@
+# Remaining game work
+- [ ] Finish and verify departure: walk through ground-floor doors, grounded street drive, no intro pictures, roadside breakdown and walk to the circus.
+- [ ] Image touch controls and inventory
+- [ ] Landscape lock with browser fallback
+- [ ] Bear skins and visible model verification
+- [ ] Russian/English menus and notes, Telegram link
+- [ ] Intro cutscene and voiced ghost conversation
+- [ ] Two additional endings and rule tests
+- [ ] Complete voice assets and desktop/mobile verification
+- [x] Bigger circus map: freak-show hall, backstage with bodies, yard, trash, exhibits, props
+- [x] Practice mode (animatronic can't catch, no battery drain)
+- [x] Mobile: animatronic invisible fix (lite materials + light budget)
+- [x] Items spawn inside broken cabinets with opening animation
+- [x] Trash and walk-through props removed, practice bear never notices, Ringmaster room + radio ending, voiced tape
+- [x] Stairwell: ground-floor exit instead of lift, readable notices, more interactions (mailbox, fuse box, chute, bells, cats, pram)
+- [x] Real 3D courtyard in the apartment window and a livelier street (wind-swayed trees, traffic, leaves, lit windows)
+- [ ] Ground-floor doors: walk through the vestibule instead of a jump cut
+- [ ] Street: close the gaps at the map edges; the car must not drive off the end of the road
+- [ ] Car models: hollow body so the cabin is not filled with paint
+- [ ] Remove intro pictures (cutscene + loading picture)
+- [ ] Drive to the park; car stalls ~1 km before; on-foot plan (crank, hood, warning triangle, walk/trail, gate) with roadside interactions
