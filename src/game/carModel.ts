@@ -59,8 +59,11 @@ export function buildCar(lite: boolean, color = "#3f6a62"): CarModel {
   // so the driver sees seats and a dashboard instead of the inside of a painted block.
   const outline: [number, number][] = [[-2.3, 0.32], [2.3, 0.32], [2.32, 0.62], [2.2, 0.86], [1.25, 0.9], [-1.0, 0.9], [-2.2, 0.8], [-2.34, 0.6]];
   for (const x of [-W / 2, W / 2 - 0.05]) slab(outline, paint, x, 0.05);
-  slab([[-2.34, 0.6], [-2.3, 0.32], [-0.95, 0.32], [-0.95, 0.84], [-2.2, 0.76]], paint, -W / 2 + 0.04, W - 0.08); // engine bay
-  slab([[1.22, 0.32], [2.3, 0.32], [2.32, 0.62], [2.2, 0.82], [1.22, 0.84]], paint, -W / 2 + 0.04, W - 0.08); // boot
+  // Open compartments: no solid painted block under the hinged lids.
+  add(new THREE.BoxGeometry(W - 0.1, 0.06, 1.35), dash, 0, 0.38, -1.62);
+  add(new THREE.BoxGeometry(W - 0.1, 0.06, 1.05), interior, 0, 0.38, 1.76);
+  add(new THREE.BoxGeometry(W - 0.1, 0.4, 0.06), paint, 0, 0.57, -2.26);
+  add(new THREE.BoxGeometry(W - 0.1, 0.4, 0.06), interior, 0, 0.57, 2.26);
   add(new THREE.BoxGeometry(W - 0.1, 0.05, 2.2), dash, 0, 0.36, 0.13); // cabin floor
   add(new THREE.BoxGeometry(W - 0.12, 0.42, 0.05), interior, 0, 0.6, -0.93); // firewall under the dash
   add(new THREE.BoxGeometry(W - 0.12, 0.5, 0.05), interior, 0, 0.62, 1.2); // behind the rear seat
@@ -74,6 +77,11 @@ export function buildCar(lite: boolean, color = "#3f6a62"): CarModel {
   const lid = new THREE.Mesh(new THREE.BoxGeometry(W - 0.06, 0.04, 1.3), paint); lid.position.set(0, 0, -0.64); lid.rotation.x = -0.055; hood.add(lid);
   const trunk = new THREE.Group(); trunk.position.set(0, 0.86, 1.24); g.add(trunk);
   const tlid = new THREE.Mesh(new THREE.BoxGeometry(W - 0.06, 0.04, 1.0), paint); tlid.position.set(0, 0, 0.49); tlid.rotation.x = 0.04; trunk.add(tlid);
+  // Reinforcement ribs move with the lids, so their undersides read as metal rather than paper.
+  for (const x of [-0.58, 0.58]) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 1.06), dash); rib.position.set(x, -0.035, -0.64); hood.add(rib);
+    const bootRib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.76), dash); bootRib.position.set(x, -0.035, 0.49); trunk.add(bootRib);
+  }
   // Greenhouse: clear glass with paint roof and pillars.
   const cabW = 1.56;
   const cab = new THREE.ExtrudeGeometry(profile([[-0.95, 0.9], [1.2, 0.9], [0.8, 1.38], [-0.45, 1.38]]), { depth: cabW, bevelEnabled: false });
@@ -88,6 +96,8 @@ export function buildCar(lite: boolean, color = "#3f6a62"): CarModel {
   // Engine sits below the bonnet, never in the passenger compartment.
   add(new THREE.BoxGeometry(0.7, 0.25, 0.65), dash, 0, 0.65, -1.6);
   add(new THREE.BoxGeometry(0.24, 0.18, 0.28), rubber, 0.55, 0.69, -1.18);
+  for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(0.6, 0.02, 0.035), chrome, 0, 0.785, -1.82 + i * 0.1);
+  add(new THREE.BoxGeometry(0.34, 0.2, 0.26), rubber, -0.5, 0.56, -1.24);
   // Bumpers, grille, lamps
   add(new THREE.BoxGeometry(W + 0.06, 0.14, 0.12), chrome, 0, 0.42, -2.36);
   add(new THREE.BoxGeometry(W + 0.06, 0.14, 0.12), chrome, 0, 0.42, 2.36);

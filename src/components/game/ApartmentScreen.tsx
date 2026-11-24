@@ -4,6 +4,7 @@ import type { Game } from "@/game/Game";
 import type { Lang } from "@/game/story";
 import { TouchControls } from "./TouchControls";
 import { Button } from "@/components/ui/button";
+import { TriangleAlert, CornerUpLeft, CornerUpRight } from "lucide-react";
 
 // Live apartment -> stairs -> drive and breakdown -> park gate.
 export function ApartmentScreen({ lang, onDone }: { lang: Lang; onDone: () => void }) {
@@ -39,6 +40,10 @@ export function ApartmentScreen({ lang, onDone }: { lang: Lang; onDone: () => vo
       {entered && hud && (
         <div className="pointer-events-none absolute inset-0 p-4 text-sm md:p-6">
           {hud.objective && <div className="panel-glass inline-block rounded px-4 py-2"><span className="text-muted-foreground">{L("Цель", "Goal")}: </span>{hud.objective}</div>}
+          {hud.waypoint && <div className="absolute -translate-x-1/2 -translate-y-1/2 text-center text-accent" style={{ left: `${hud.waypoint.x * 100}%`, top: `${hud.waypoint.y * 100}%` }}>
+            <div className="panel-glass mx-auto grid h-10 w-10 place-items-center rounded">{hud.waypoint.behind ? (hud.waypoint.x < 0.5 ? <CornerUpLeft /> : <CornerUpRight />) : <TriangleAlert />}</div>
+            <span className="panel-glass mt-1 inline-block rounded px-2 py-1 text-xs">{L("Место для знака", "Triangle location")} · {hud.waypoint.distance} {L("м", "m")}</span>
+          </div>}
           <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/70" />
           {hud.prompt && <div className={`absolute left-0 w-full text-center text-lg ${isTouch ? "bottom-40" : "bottom-28"}`}><span className="panel-glass rounded px-3 py-1">{isTouch ? "" : "[E] "}{hud.prompt}</span></div>}
           {hud.subtitle && <div className="absolute bottom-10 left-0 w-full px-6 text-center"><span className="cutscene-caption inline-block max-w-3xl rounded px-4 py-2 text-base md:text-lg">{hud.subtitle}</span></div>}

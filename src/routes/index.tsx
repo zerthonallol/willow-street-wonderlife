@@ -5,7 +5,7 @@ import type { Ending, EndStats, Game, Hud, Note, TokenColor } from "@/game/Game"
 import type { MenuScene } from "@/game/MenuScene";
 import { GFX, GFX_KEY, defaultGraphics, type Graphics } from "@/game/settings";
 import { Button } from "@/components/ui/button";
-import { Send, X, Backpack, Smartphone } from "lucide-react";
+import { Send, X, Backpack, Smartphone, ArrowUpRight, Play, Settings2, Trophy, ScanFace, Move, ArrowLeft } from "lucide-react";
 import { ApartmentScreen } from "@/components/game/ApartmentScreen";
 import { GhostDialog } from "@/components/game/GhostDialog";
 import { CONTROL_IMAGES, ITEM_IMAGES } from "@/components/game/media";
@@ -244,8 +244,16 @@ function Page() {
         <div className="absolute inset-0">
           <div ref={menuBox} className="absolute inset-0" />
           <div className="vignette pointer-events-none absolute inset-0" />
-          <div className="menu-stage absolute inset-0 flex items-center px-6 md:px-16">
-            <div className="menu-panel fade-up w-full max-w-md">
+          <div className="menu-film pointer-events-none absolute inset-0" />
+          <header className="menu-masthead absolute inset-x-0 top-0 flex items-center justify-between px-6 py-5 md:px-12">
+            <span className="font-sans text-xs uppercase text-foreground/80">ZERTHONAL <span className="text-muted-foreground">/ GAMES</span></span>
+            <div className="flex items-center gap-3">
+              <div className="flex" role="group" aria-label="Language">{(["ru", "en"] as const).map((l) => <Button key={l} size="sm" variant="ghost" className="menu-language" aria-pressed={lang === l} onClick={() => { saveLang(l); setLanguage(l); }}>{l.toUpperCase()}</Button>)}</div>
+              <Button variant="ghost" size="icon" asChild><a href="https://t.me/zerthonalgames" target="_blank" rel="noopener noreferrer" aria-label="Telegram" title="Telegram"><Send className="h-4 w-4" /></a></Button>
+            </div>
+          </header>
+          <div className="menu-stage absolute inset-0 flex items-center px-6 md:px-12">
+            <div className={`menu-panel fade-up w-full ${panel === "main" ? "menu-main" : "menu-subpanel"}`}>
               {screen === "end" && ending ? (
                 <>
                   <p className="text-sm uppercase tracking-normal text-muted-foreground">{ENDINGS[ending.e].tag}</p>
@@ -259,21 +267,19 @@ function Page() {
                 </>
               ) : (
                 <>
-                  <p className="text-sm uppercase tracking-normal text-muted-foreground">{L("Парк «Весёлые Горки» · 1987", "Happy Hills · 1987")}</p>
-                  <h1 className="title-3d mt-3 text-6xl md:text-7xl">{lang === "ru" ? <>ЗАБЫТЫЙ<br />ПАРК</> : <>FORGOTTEN<br />PARK</>}</h1>
+                  <p className="menu-eyebrow text-xs uppercase text-accent">{L("Парк «Весёлые Горки» / Закрыт с 1987", "Happy Hills / Closed since 1987")}</p>
+                  <h1 className="menu-title mt-5">{lang === "ru" ? <>ЗАБЫТЫЙ<br /><span>ПАРК</span></> : <>FORGOTTEN<br /><span>PARK</span></>}</h1>
                   {panel === "main" && (
-                    <nav className="mt-5">
-                       <MenuItem onClick={() => setPanel("skins")}>{L("Скин Барни", "Barney skin")}: {SKINS[skin][lang]}</MenuItem>
-                      <MenuItem onClick={startIntro} onHover={(v) => menu.current?.setFocus(v)}>{L("Играть", "Play")}</MenuItem>
-                      <MenuItem onClick={() => setPanel("controls")}>{L("Управление", "Controls")}</MenuItem>
-                      <MenuItem onClick={() => setPanel("graphics")}>{L("Графика", "Graphics")}: {lang === "ru" ? GFX[gfx].label : gfx}</MenuItem>
-                      <MenuItem onClick={() => setPanel("endings")}>{L("Концовки", "Endings")} {seen.length}/7</MenuItem>
+                    <nav className="menu-navigation mt-8">
+                      <Button variant="ghost" className="menu-play" onClick={startIntro} onMouseEnter={() => menu.current?.setFocus(1)} onMouseLeave={() => menu.current?.setFocus(0)} onFocus={() => menu.current?.setFocus(1)} onBlur={() => menu.current?.setFocus(0)}><Play className="h-5 w-5" /><span>{L("Начать игру", "Begin game")}</span><ArrowUpRight className="ml-auto h-5 w-5" /></Button>
+                      <div className="menu-options">
+                        <MenuItem onClick={() => setPanel("graphics")}><Settings2 />{L("Настройки", "Settings")}</MenuItem>
+                        <MenuItem onClick={() => setPanel("controls")}><Move />{L("Управление", "Controls")}</MenuItem>
+                        <MenuItem onClick={() => setPanel("skins")}><ScanFace />{L("Облик Барни", "Barney's look")}</MenuItem>
+                        <MenuItem onClick={() => setPanel("endings")}><Trophy />{L("Концовки", "Endings")}<span className="ml-auto text-xs text-accent">{seen.length} / 7</span></MenuItem>
+                      </div>
                     </nav>
                   )}
-                  {panel === "main" && <div className="mt-4 flex items-center gap-3">
-                    <div className="flex border border-border rounded" role="group" aria-label="Language">{(["ru", "en"] as const).map((l) => <Button key={l} variant={lang === l ? "secondary" : "ghost"} aria-pressed={lang === l} onClick={() => { saveLang(l); setLanguage(l); }}>{l.toUpperCase()}</Button>)}</div>
-                    <Button variant="outline" asChild><a href="https://t.me/zerthonalgames" target="_blank" rel="noopener noreferrer"><Send />Telegram</a></Button>
-                  </div>}
                   {panel === "skins" && <div className="mt-5">{(Object.keys(SKINS) as SkinId[]).map((id) => <Button key={id} variant="ghost" className="flex w-full justify-start text-lg" aria-pressed={skin === id} onClick={() => { setSkin(id); localStorage.setItem("park-skin", id); }}>{skin === id ? "●" : "○"} {SKINS[id][lang]}</Button>)}<MenuItem onClick={() => setPanel("main")}>{L("Назад", "Back")}</MenuItem></div>}
                   {panel === "controls" && (
                     <div className="mt-8 space-y-1 text-lg text-foreground/85">
@@ -324,6 +330,7 @@ function Page() {
               )}
             </div>
           </div>
+          <footer className="menu-footer pointer-events-none absolute inset-x-0 bottom-0 flex justify-between px-6 py-5 text-xs text-muted-foreground md:px-12"><span>{L("НОЧЬ 01 / ЛИВЕНЬ", "NIGHT 01 / DOWNPOUR")}</span><span>{L("СЕМЬ КОНЦОВОК · ОДНА НОЧЬ", "SEVEN ENDINGS · ONE NIGHT")}</span></footer>
         </div>
       )}
     </div>
@@ -333,6 +340,7 @@ function Page() {
 function MenuItem({ children, onClick, onHover }: { children: React.ReactNode; onClick: () => void; onHover?: (v: number) => void }) {
   return (
     <Button variant="ghost" className="menu-item h-auto whitespace-normal justify-start hover:bg-transparent" onClick={onClick} onMouseEnter={() => onHover?.(1)} onMouseLeave={() => onHover?.(0)} onFocus={() => onHover?.(1)} onBlur={() => onHover?.(0)}>
+      {typeof children === "string" && (children === "Назад" || children === "Back") && <ArrowLeft className="h-4 w-4" />}
       {children}
     </Button>
   );

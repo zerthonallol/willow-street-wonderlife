@@ -9,7 +9,7 @@ export class MenuScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
-  private clock = new THREE.Clock();
+  private clock = new THREE.Timer();
   private raf = 0;
   private bear = buildBear();
   private sky = createNightSky(200);
@@ -28,11 +28,11 @@ export class MenuScene {
     this.quality = new AdaptiveQuality(this.renderer, Math.min(window.devicePixelRatio, 1.25), 0.6);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.35;
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 250);
-    this.scene.fog = new THREE.FogExp2("#0a0f14", 0.045);
+    this.scene.fog = new THREE.FogExp2("#0c1413", 0.027);
     this.scene.add(this.sky.mesh, this.rain.mesh, this.hemi);
 
     const floorTex = concreteTexture();
@@ -42,14 +42,14 @@ export class MenuScene {
     this.scene.add(floor);
 
     // bear on the right third, half-lit from below and behind
-    this.bear.root.position.set(1.6, 0, 0);
-    this.bear.root.rotation.y = -0.35;
+    this.bear.root.position.set(2.5, 0, 0);
+    this.bear.root.rotation.y = -0.48;
     this.scene.add(this.bear.root);
     this.rim = new THREE.SpotLight("#ff3b2a", 80, 18, 0.6, 0.6, 1.5);
     this.rim.position.set(4, 5, -4);
     this.rim.target = this.bear.root;
     this.scene.add(this.rim);
-    const key = new THREE.SpotLight("#9fc4ff", 50, 20, 0.5, 0.8, 1.5);
+    const key = new THREE.SpotLight("#b8d9cc", 75, 20, 0.65, 0.8, 1.5);
     key.position.set(-3, 6, 6);
     key.target = this.bear.root;
     this.scene.add(key);
@@ -70,7 +70,7 @@ export class MenuScene {
       this.wheel.add(gon);
     }
     const wb = new THREE.Group();
-    wb.position.set(-14, 16, -40);
+    wb.position.set(-8, 16, -34);
     wb.add(this.wheel);
     for (const s of [-1, 1]) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 20, 5), wm);
@@ -101,6 +101,7 @@ export class MenuScene {
 
     window.addEventListener("pointermove", this.onMove);
     window.addEventListener("resize", this.onResize);
+    this.clock.connect(document);
     this.loop();
   }
 
@@ -130,15 +131,16 @@ export class MenuScene {
   private look = new THREE.Vector3(0.6, 2.4, 0);
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
+    this.clock.update();
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    const t = this.clock.elapsedTime;
+    const t = this.clock.getElapsed();
     this.quality.tick(dt);
 
     const narrow = this.camera.aspect < 1;
-    const target = new THREE.Vector3(this.mouse.x * 0.8 + (narrow ? 1.6 : 0), 2.6 - this.mouse.y * 0.4, narrow ? 10.5 : 8 - this.focus * 1.6);
+    const target = new THREE.Vector3(this.mouse.x * 0.28 + (narrow ? 0.9 : 0), 2.45 - this.mouse.y * 0.15, narrow ? 12 : 8.8 - this.focus * 0.7);
     this.camPos.lerp(target, 1 - Math.exp(-dt * 3));
     this.camera.position.copy(this.camPos);
-    this.camera.lookAt(this.look.set(narrow ? 1.6 : 0.6, 2.4, 0));
+    this.camera.lookAt(this.look.set(narrow ? 1.4 : 0.7, 2.15, 0));
 
     // bear: breathing, twitching head, follows the cursor with its eye
     const b = this.bear;
@@ -156,7 +158,7 @@ export class MenuScene {
     if (Math.random() < 0.15) {
       const i = Math.floor(Math.random() * 28);
       this.bulbs.setColorAt(i, Math.random() < 0.3 ? new THREE.Color("#100c08") : new THREE.Color(["#ffcf6b", "#ff4a4a", "#5ad8ff"][i % 3]).multiplyScalar(2));
-      this.bulbs.instanceColor!.needsUpdate = true;
+      if (this.bulbs.instanceColor) this.bulbs.instanceColor.needsUpdate = true;
     }
 
     const fl = this.lightning.update(dt);
@@ -178,6 +180,7 @@ export class MenuScene {
     window.removeEventListener("pointermove", this.onMove);
     window.removeEventListener("resize", this.onResize);
     this.renderer.dispose();
+    this.clock.dispose();
     this.renderer.domElement.remove();
     this.scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }

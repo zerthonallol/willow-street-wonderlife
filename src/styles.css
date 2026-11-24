@@ -80,6 +80,11 @@
   --radius: 0.25rem;
   --paper: oklch(0.9 0.03 85);
   --paper-ink: oklch(0.25 0.04 260);
+  --menu-scrim: oklch(0.1 0.012 160);
+  --menu-light: oklch(0.92 0.025 90);
+  --menu-ink: oklch(0.17 0.015 160);
+  --menu-rule: oklch(0.92 0.025 90 / 0.22);
+  --menu-shadow: 0 4px 28px oklch(0.05 0 0 / 0.7);
   --background: oklch(0.12 0.015 250);
   --foreground: oklch(0.93 0.02 80);
   --card: oklch(0.16 0.02 250 / 0.85);
@@ -163,41 +168,63 @@
 }
 
 @layer components {
-  .menu-stage { perspective: 1100px; }
+  .menu-stage { padding-top: 88px; padding-bottom: 72px; }
   .menu-panel {
-    transform: rotateY(14deg) rotateX(3deg);
-    transform-style: preserve-3d;
-    transition: transform 0.6s cubic-bezier(.2,.8,.2,1);
+    max-width: 440px;
+    max-height: 100%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    text-shadow: var(--menu-shadow);
   }
+  .menu-title {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 76px;
+    line-height: 1.05;
+    color: var(--menu-light);
+    letter-spacing: 0;
+  }
+  .menu-title span { color: var(--accent); }
+  .menu-eyebrow { display: flex; align-items: center; gap: 12px; }
+  .menu-eyebrow::before { content: ""; width: 24px; height: 1px; background: var(--accent); flex-shrink: 0; }
+  .menu-film {
+    background: linear-gradient(90deg, color-mix(in oklch, var(--menu-scrim) 94%, transparent), color-mix(in oklch, var(--menu-scrim) 70%, transparent) 32%, transparent 65%), linear-gradient(0deg, var(--menu-scrim), transparent 16%, transparent 85%, color-mix(in oklch, var(--menu-scrim) 65%, transparent));
+  }
+  .menu-masthead { z-index: 2; border-bottom: 1px solid var(--menu-rule); }
+  .menu-language { color: var(--muted-foreground); height: 28px; padding: 0 10px; font-size: 12px; border-radius: 0; }
+  .menu-language[aria-pressed="true"] { color: var(--foreground); border-bottom: 1px solid var(--accent); }
+  .menu-footer { border-top: 1px solid var(--menu-rule); }
+  .menu-navigation { max-width: 360px; }
+  .menu-play {
+    display: flex; width: 100%; height: 60px; gap: 16px; padding: 0 22px;
+    border-radius: 2px; background: var(--menu-light); color: var(--menu-ink);
+    font-size: 20px; font-weight: 600; text-shadow: none;
+    transition: background .2s, transform .2s;
+  }
+  .menu-play:hover, .menu-play:focus-visible { background: var(--accent); color: var(--menu-ink); transform: translateX(3px); }
+  .menu-options { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
   .menu-item {
     position: relative;
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     width: 100%;
     text-align: left;
-    font-family: var(--font-display);
-    font-size: 1.75rem;
+    font-family: var(--font-sans);
+    font-size: 16px;
     letter-spacing: 0;
-    color: var(--muted-foreground);
-    padding: 0.35rem 0 0.35rem 1.4rem;
-    transform: translateZ(0);
-    transition: transform .35s cubic-bezier(.2,.8,.2,1), color .2s, text-shadow .2s;
-  }
-  .menu-item::before {
-    content: "";
-    position: absolute; left: 0; top: 50%;
-    width: 0.55rem; height: 0.55rem; margin-top: -0.28rem;
-    background: var(--glow); border-radius: 999px;
-    box-shadow: 0 0 12px var(--glow);
-    opacity: 0; transform: scale(.3);
-    transition: opacity .2s, transform .2s;
-  }
-  .menu-item:hover, .menu-item:focus-visible {
     color: var(--foreground);
-    transform: translateZ(60px) translateX(10px);
-    text-shadow: 0 0 18px color-mix(in oklch, var(--glow) 70%, transparent), 0 6px 0 color-mix(in oklch, var(--background) 80%, transparent);
-    outline: none;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--menu-rule);
+    border-radius: 0;
+    transition: color .2s, transform .2s;
   }
-  .menu-item:hover::before, .menu-item:focus-visible::before { opacity: 1; transform: scale(1); }
+  .menu-item svg { width: 16px; height: 16px; color: var(--muted-foreground); flex-shrink: 0; }
+  .menu-item:hover, .menu-item:focus-visible {
+    color: var(--accent);
+    transform: translateX(3px);
+  }
+  .menu-subpanel .menu-title { font-size: 46px; }
   .title-3d {
     font-family: var(--font-display);
     color: var(--foreground);
@@ -275,7 +302,12 @@
 .notice-paper-hint { color: color-mix(in oklch, var(--paper-ink) 60%, transparent); font-family: var(--font-sans); }
 .cutscene-caption { background: linear-gradient(transparent, var(--background)); }
 .game-dialog { max-height: 88dvh; overflow-y: auto; }
-.menu-panel { max-height: 94dvh; overflow-y: auto; }
+@media (max-width: 640px) and (min-height: 521px) {
+  .menu-title { font-size: 52px; }
+  .menu-panel { max-width: 330px; }
+  .menu-film { background: linear-gradient(90deg, color-mix(in oklch, var(--menu-scrim) 88%, transparent), color-mix(in oklch, var(--menu-scrim) 45%, transparent)), linear-gradient(0deg, var(--menu-scrim), transparent 70%); }
+  .menu-footer { font-size: 10px; }
+}
 @media (max-height: 520px) {
   .touch-btn { width: 3rem; height: 3rem; }
   .touch-btn-lg { width: 3.8rem; height: 3.8rem; }
@@ -288,8 +320,17 @@
 
 /* short phone screens (landscape): scroll menu, shrink HUD */
 @media (max-height: 520px) {
-  .menu-stage { align-items: flex-start; overflow-y: auto; padding-top: 1rem; padding-bottom: 1rem; }
-  .menu-stage .title-3d { font-size: 2.5rem; line-height: 1; }
-  .menu-stage nav { margin-top: 1rem; }
+  .menu-stage { align-items: center; padding-top: 62px; padding-bottom: 42px; }
+  .menu-masthead, .menu-footer { padding-top: 10px; padding-bottom: 10px; }
+  .menu-panel { max-width: 330px; }
+  .menu-title, .menu-subpanel .menu-title { font-size: 36px; margin-top: 8px; }
+  .menu-stage .title-3d { font-size: 2rem; line-height: 1; }
+  .menu-eyebrow { font-size: 10px; }
+  .menu-stage nav { margin-top: 14px; }
+  .menu-play { height: 44px; font-size: 17px; }
+  .menu-options { margin-top: 8px; }
+  .menu-options .menu-item { font-size: 13px; padding: 10px 0; }
+  .menu-footer { font-size: 10px; }
   .panel-glass { font-size: 0.75rem; }
 }
+@media (prefers-reduced-motion: reduce) { .menu-play, .menu-play:hover { transition: none; transform: none; } }

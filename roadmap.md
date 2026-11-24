@@ -1,4 +1,5 @@
 # Remaining game work
+- [ ] Current request: rebuild menu and 1990s apartment; repair stairwell windows and apartment seam; clarify triangle placement; animate bonnet and boot; verify changes.
 - [ ] Finish and verify departure: walk through ground-floor doors, grounded street drive, no intro pictures, roadside breakdown and walk to the circus.
 - [ ] Image touch controls and inventory
 - [ ] Landscape lock with browser fallback

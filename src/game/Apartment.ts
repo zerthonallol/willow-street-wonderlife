@@ -2,6 +2,8 @@
 // Prologue level: the player's 7th-floor apartment on a stormy night. Plain three.js, browser-only.
 import * as THREE from "three";
 import { Sfx } from "./audio";
+import { domesticTexture } from "./retroInterior";
+import { panelAngle, panelProgress, TRIANGLE_DISTANCE } from "./car-panel-rules";
 import { createRain, Lightning } from "./atmosphere";
 import { APARTMENT, voiceUrl, type Lang } from "./story";
 import parquetUrl from "@/assets/apartment/parquet.jpg";
@@ -18,7 +20,7 @@ import { buildRoad, fitCar, ROAD_ORIGIN, STOP_LATERAL, type RoadWorld } from "./
 import { STREET_OFFSET, STREET_LENGTH, inStreet, streetGround, streetToWorld, worldToStreet } from "./street-rules";
 import { BATTERY_DIES_ON, CRUISE, DIE_AT, GATE, HEAD_OFF_Z, SPUTTER_AT, STOP_AT, canHeadOff, canLeaveCar, roadTask, trailDistance, walkable } from "./road-rules";
 
-export interface AptHud { prompt: string; objective: string; subtitle: string; paused: boolean; flashlight: boolean; fade: number; note: { title: string; body: string } | null }
+export interface AptHud { prompt: string; objective: string; subtitle: string; paused: boolean; flashlight: boolean; fade: number; note: { title: string; body: string } | null; waypoint: { x: number; y: number; distance: number; behind: boolean } | null }
 export interface AptCallbacks { onHud: (h: AptHud) => void; onProgress: (p: number) => void; onReady: () => void; onDone: () => void }
 
 type Box = [number, number, number, number]; // minX, minZ, maxX, maxZ
@@ -236,6 +238,7 @@ export class Apartment {
   private holdingTriangle = false;
   private trianglePlaced = false;
   private trunkTriangle!: THREE.Object3D;
+  private triangleGuide: THREE.Group | null = null;
   private phoneT = 2;
   private phoneAnswered = false;
   private gateOpening = false;
@@ -313,7 +316,9 @@ export class Apartment {
     if (cur < b) pieces.push([cur, b, 0, H]);
     for (const [f, t, y0, y1] of pieces) {
       const len = t - f, hh = y1 - y0;
-      const m = this.mat({ map: this.tex(wallTex, len / tiled, hh / tiled), roughness: 0.95 });
+      const texture = wallTex === wallpaperUrl ? domesticTexture("wallpaper") : this.tex(wallTex, len / tiled, hh / tiled);
+      if (wallTex === wallpaperUrl) texture.repeat.set(len / 0.85, hh / 0.85);
+      const m = this.mat({ map: texture, roughness: 0.95 });
       const mid = (f + t) / 2;
       if (axis === "x") this.box(len, hh, T, m, mid, y0, fixed, y0 === 0);
       else this.box(T, hh, len, m, fixed, y0, mid, y0 === 0);
@@ -394,7 +399,7 @@ export class Apartment {
 
     // floors and ceiling
     const floor = (x0: number, z0: number, x1: number, z1: number, m: THREE.Material) => {
-      const f = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), m);
+      const f = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0 + T, z1 - z0 + T), m);
       f.rotation.x = -Math.PI / 2; f.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2); sc.add(f);
     };
     floor(0, 0, 5, 6, this.mat({ map: this.tex(parquetUrl, 2.5, 3), roughness: 0.45 }));
@@ -402,9 +407,9 @@ export class Apartment {
     const lino = linoTex(); lino.repeat.set(2, 1.5);
     floor(5, 0, 9, 3, this.mat({ map: lino, roughness: 0.5 }));
     const ceilT = plasterTex(); ceilT.repeat.set(4, 3);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(9, 6), this.mat({ map: ceilT, roughness: 1 }));
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(9 + T, 6 + T), this.mat({ map: ceilT, roughness: 1 }));
     ceil.rotation.x = Math.PI / 2; ceil.position.set(4.5, H, 3); sc.add(ceil);
-    const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.75), this.mat({ map: this.tex(rugUrl), roughness: 1 }));
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.75), this.mat({ map: domesticTexture("rug"), roughness: 1 }));
     rug.rotation.x = -Math.PI / 2; rug.position.set(2.2, 0.005, 3.1); sc.add(rug);
 
     // walls
@@ -429,6 +434,10 @@ export class Apartment {
     }
     this.buildDeparture();
 
+    // Continuous cornices overlap wall junctions; no daylight seam at the ceiling.
+    const cornice = this.mat({ map: plasterTex(), color: "#e4dfcb" });
+    for (const z of [0.07, 5.93]) this.box(9, 0.09, 0.1, cornice, 4.5, H - 0.09, z);
+    for (const x of [0.07, 4.93, 5.07, 8.93]) this.box(0.1, 0.09, 6, cornice, x, H - 0.09, 3);
     this.living();
     this.kitchen();
     this.hall();
@@ -444,109 +453,159 @@ export class Apartment {
   private drops!: THREE.Texture;
 
   private living() {
-    const wood = this.mat({ map: woodTex("#6b4026", "#2b160a"), roughness: 0.55 });
-    const darkWood = this.mat({ map: woodTex("#3d2516", "#180a04"), roughness: 0.45 });
-    // "stenka" wall unit along the back wall (z=6)
-    this.box(3.2, 2.3, 0.45, darkWood, 2.2, 0, 5.75, true);
-    const glassM = new THREE.MeshStandardMaterial({ color: "#88a0a8", transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.4 });
-    this.box(1.0, 0.9, 0.02, glassM, 1.4, 1.15, 5.51);
-    const bookCols = ["#6b1e1e", "#1f3d5c", "#2e4a2a", "#7a6a3a", "#3a2a4a", "#8a4a20", "#20302e"];
-    for (let shelf = 0; shelf < 2; shelf++) {
-      let x = 2.35;
-      while (x < 3.6) {
-        const w = 0.03 + Math.random() * 0.04, h = 0.22 + Math.random() * 0.1;
-        this.box(w, h, 0.18, this.mat({ color: bookCols[Math.floor(Math.random() * bookCols.length)], roughness: 0.9 }), x, 1.2 + shelf * 0.42, 5.5);
-        x += w + 0.005;
-      }
+    const walnut = this.mat({ map: woodTex("#634630", "#251b14"), roughness: 0.48 });
+    const edge = this.mat({ map: woodTex("#35291e", "#16140f"), roughness: 0.58 });
+    const brass = this.mat({ color: "#b5a16a", roughness: 0.38, metalness: 0.65 });
+    const linen = this.mat({ map: fabricTex("#41635d"), roughness: 1 });
+    const cushion = this.mat({ map: fabricTex("#607c6c"), roughness: 1 });
+    const round = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = this.scene) => {
+      const r = Math.min(0.055, w / 5, h / 5, d / 5);
+      const shape = new THREE.Shape();
+      shape.moveTo(-w / 2 + r, -h / 2); shape.lineTo(w / 2 - r, -h / 2);
+      shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r); shape.lineTo(w / 2, h / 2 - r);
+      shape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2); shape.lineTo(-w / 2 + r, h / 2);
+      shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r); shape.lineTo(-w / 2, -h / 2 + r);
+      shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: d - r * 2, steps: 1, bevelEnabled: true, bevelSize: r / 2, bevelThickness: r, bevelSegments: 2, curveSegments: 4 });
+      geo.translate(0, 0, -d / 2 + r);
+      const mesh = new THREE.Mesh(geo, m); mesh.position.set(x, y + h / 2, z); parent.add(mesh); return mesh;
+    };
+    // A real open veneered wall unit: recessed shelves, cabinet doors, glazing and feet.
+    this.box(3.2, 2.25, 0.035, edge, 2.2, 0.08, 5.94);
+    this.boxes.push([0.6, 5.46, 3.8, 6]);
+    for (const x of [0.62, 1.94, 3.78]) this.box(0.065, 2.27, 0.43, walnut, x, 0.06, 5.73);
+    for (const y of [0.08, 0.65, 1.12, 1.61, 2.3]) this.box(3.2, 0.045, 0.43, walnut, 2.2, y, 5.73);
+    for (const x of [0.96, 1.63, 2.36, 3.34]) {
+      this.box(0.58, 0.53, 0.035, walnut, x, 0.12, 5.49);
+      this.box(0.12, 0.018, 0.025, brass, x, 0.47, 5.465);
     }
-    // crystal glasses behind glass
-    const crystal = new THREE.MeshStandardMaterial({ color: "#d8f0ff", transparent: true, opacity: 0.5, roughness: 0.05, metalness: 0.2 });
-    for (let i = 0; i < 6; i++) this.cyl(0.03, 0.025, 0.1, crystal, 1.05 + i * 0.13, 1.25, 5.62, 10);
-    // the photo frame on the open shelf
-    const frame = this.box(0.26, 0.22, 0.02, this.mat({ color: "#a8884a", metalness: 0.5, roughness: 0.4 }), 1.3, 0.78, 5.48);
-    frame.rotation.x = -0.15;
-    const ph = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.18), this.mat({ map: this.tex(photoUrl), roughness: 0.6 }));
-    ph.position.set(0, 0, -0.012); ph.rotation.y = Math.PI; frame.add(ph);
+    const cabinetGlass = this.mat({ color: "#d3e0d3", transparent: true, opacity: 0.16, roughness: 0.12 });
+    this.box(1.22, 1.1, 0.016, cabinetGlass, 1.28, 1.16, 5.475);
+    for (const x of [0.68, 1.88]) this.box(0.025, 1.1, 0.025, walnut, x, 1.16, 5.46);
+    const bookColors = ["#763c3f", "#3d5b6b", "#61745b", "#b0975c", "#b4ac92"];
+    for (let row = 0; row < 2; row++) for (let i = 0; i < 16; i++) {
+      const x = 2.06 + i * 0.096, h = 0.25 + (i % 4) * 0.027;
+      this.box(0.075, h, 0.2, this.mat({ color: bookColors[i % bookColors.length] }), x, 1.17 + row * 0.49, 5.7);
+      this.box(0.061, 0.006, 0.003, brass, x, 1.21 + row * 0.49, 5.594);
+    }
+    const crystal = this.mat({ color: "#c4d7cf", transparent: true, opacity: 0.55, roughness: 0.1 });
+    for (let i = 0; i < 5; i++) {
+      this.cyl(0.05, 0.018, 0.13, crystal, 0.84 + i * 0.2, 1.19, 5.73, 12);
+      this.cyl(0.01, 0.01, 0.06, crystal, 0.84 + i * 0.2, 1.13, 5.73, 8);
+    }
+    const photo = new THREE.Group(); photo.position.set(1.3, 0.82, 5.48); photo.rotation.x = -0.12; this.scene.add(photo);
+    this.box(0.29, 0.24, 0.025, brass, 0, -0.12, 0, false, photo);
+    const image = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.2), this.mat({ map: this.tex(photoUrl) }));
+    image.position.z = -0.016; image.rotation.y = Math.PI; photo.add(image);
     this.spot("photo", new THREE.Vector3(1.3, 0.9, 5.45), () => this.l("Посмотреть фотографию", "Look at the photo"), () => true, () => { this.done.add("photo"); this.say("a_photo"); });
 
-    // CRT TV on a stand by the left wall
-    this.box(0.5, 0.55, 1.2, wood, 0.3, 0, 3.1, true);
-    const tv = new THREE.Group(); tv.position.set(0.35, 0.55, 3.1); this.scene.add(tv);
-    const plastic = this.mat({ color: "#2a2826", roughness: 0.5 });
-    this.box(0.5, 0.48, 0.62, plastic, 0, 0, 0, false, tv);
-    this.tvScreen = canvasTex(256, 192, (g) => { g.fillStyle = "#0a0c0c"; g.fillRect(0, 0, 256, 192); }, false);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36), new THREE.MeshBasicMaterial({ map: this.tvScreen, toneMapped: false }));
-    screen.position.set(0.255, 0.25, 0); screen.rotation.y = Math.PI / 2; tv.add(screen);
-    this.cyl(0.004, 0.004, 0.45, this.mat({ color: "#aaa", metalness: 0.9 }), -0.05, 0.48, -0.08, 6, tv).rotation.z = 0.5;
-    this.cyl(0.004, 0.004, 0.45, this.mat({ color: "#aaa", metalness: 0.9 }), -0.05, 0.48, 0.08, 6, tv).rotation.z = -0.5;
-    this.spot("tv", new THREE.Vector3(0.6, 0.85, 3.1), () => this.tvOn ? this.l("Выключить телевизор", "Turn off the TV") : this.l("Включить телевизор", "Turn on the TV"), () => true, () => {
-      this.tvOn = !this.tvOn; this.sfx.click();
-      if (this.tvOn && !this.done.has("tv")) { this.done.add("tv"); this.say("a_tv"); }
-    });
+    // Green velour sofa with shaped cushions, piping, carved wooden arms and raised feet.
+    for (const x of [3.22, 3.96]) for (const z of [2.18, 4.02]) this.box(0.055, 0.16, 0.055, walnut, x, 0, z);
+    round(0.97, 0.23, 2.15, linen, 3.6, 0.15, 3.1);
+    round(0.22, 0.57, 2.12, linen, 4.0, 0.35, 3.1);
+    for (const z of [2.05, 4.15]) { round(1.03, 0.38, 0.22, linen, 3.6, 0.32, z); this.box(0.88, 0.035, 0.17, walnut, 3.55, 0.7, z); }
+    for (const z of [2.58, 3.62]) {
+      round(0.73, 0.18, 0.99, cushion, 3.48, 0.38, z);
+      round(0.075, 0.38, 0.95, cushion, 3.87, 0.53, z);
+      this.box(0.72, 0.008, 0.99, linen, 3.48, 0.51, z);
+    }
+    this.boxes.push([3.06, 1.92, 4.14, 4.28]);
+    const pillow = round(0.14, 0.32, 0.38, this.mat({ map: fabricTex("#9c6a5e") }), 3.76, 0.57, 2.43); pillow.rotation.z = -0.23;
+    const blanket = this.box(0.58, 0.035, 0.72, this.mat({ map: fabricTex("#647587") }), 3.5, 0.565, 3.9); blanket.rotation.y = 0.08;
 
-    // sofa facing the TV
-    const fabric = this.mat({ map: fabricTex("#5d4a3a"), roughness: 1 });
-    this.box(0.95, 0.42, 2.1, fabric, 3.6, 0, 3.1, true);
-    this.box(0.25, 0.55, 2.1, fabric, 4.0, 0.42, 3.1);
-    this.box(0.95, 0.25, 0.22, fabric, 3.6, 0.42, 2.0);
-    this.box(0.95, 0.25, 0.22, fabric, 3.6, 0.42, 4.2);
-    for (const z of [2.6, 3.6]) { const c = this.box(0.55, 0.14, 0.9, this.mat({ map: fabricTex("#6e5845") }), 3.45, 0.42, z); c.scale.set(1, 1, 0.98); }
-    const pillow = this.box(0.12, 0.35, 0.35, this.mat({ map: fabricTex("#8a6a3a") }), 3.85, 0.56, 2.4); pillow.rotation.z = -0.3;
-    const blanket = this.box(0.5, 0.05, 0.9, this.mat({ map: fabricTex("#3a4a5a") }), 3.5, 0.56, 3.9); blanket.rotation.y = 0.2;
-    // coffee table with mug and newspaper
-    this.box(0.6, 0.04, 1.0, wood, 2.2, 0.42, 3.1, true);
-    for (const [dx, dz] of [[-0.25, -0.45], [0.25, -0.45], [-0.25, 0.45], [0.25, 0.45]]) this.box(0.04, 0.42, 0.04, wood, 2.2 + dx, 0, 3.1 + dz);
-    this.cyl(0.04, 0.035, 0.09, this.mat({ color: "#e8e0d0", roughness: 0.3 }), 2.1, 0.46, 2.85, 14);
-    const paper = this.box(0.3, 0.005, 0.4, this.mat({ color: "#d8d0bc" }), 2.25, 0.46, 3.3); paper.rotation.y = 0.4;
-    // floor lamp
-    const brass = this.mat({ color: "#a08040", metalness: 0.7, roughness: 0.35 });
-    this.cyl(0.15, 0.18, 0.03, brass, 4.55, 0, 5.2);
-    this.cyl(0.015, 0.015, 1.5, brass, 4.55, 0.03, 5.2, 8);
-    this.cyl(0.14, 0.24, 0.3, this.mat({ color: "#e8c890", emissive: "#ffb060", emissiveIntensity: 0.6, side: THREE.DoubleSide, transparent: true, opacity: 0.95 }), 4.55, 1.45, 5.2, 18);
-    // wall clock + carpet on the wall (very 80s)
-    const clock = this.cyl(0.18, 0.18, 0.04, this.mat({ color: "#efe8d8" }), 0.07, 1.9, 1.4, 24); clock.rotation.z = Math.PI / 2;
-    const wallRug = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), this.mat({ map: this.tex(rugUrl), roughness: 1 }));
-    wallRug.position.set(4.93, 1.55, 2.35); wallRug.rotation.y = -Math.PI / 2; this.scene.add(wallRug);
-    // chandelier
-    this.cyl(0.01, 0.01, 0.35, brass, 2.4, H - 0.35, 3.1, 6);
-    this.cyl(0.25, 0.1, 0.12, this.mat({ color: "#f4ecd8", emissive: "#ffd8a0", emissiveIntensity: 0.8 }), 2.4, H - 0.47, 3.1, 20);
-    // window spot
-    this.spot("window", new THREE.Vector3(3.5, 1.5, 0.3), () => this.l("Выглянуть в окно", "Look out the window"), () => this.done.has("phone"), () => {
-      this.done.add("window"); this.say("a_window"); this.lightning.update(99); this.sfx.thunder(0.3, 1);
-    });
+    // Rounded CRT, speaker grille, silver tuning knobs and a cassette player below.
+    this.box(0.56, 0.54, 1.05, walnut, 0.32, 0, 3.1, true);
+    for (const z of [2.63, 3.57]) this.box(0.5, 0.055, 0.04, edge, 0.34, 0.32, z);
+    const tv = new THREE.Group(); tv.position.set(0.33, 0.58, 3.1); this.scene.add(tv);
+    const plastic = this.mat({ color: "#303734", roughness: 0.6 });
+    round(0.52, 0.49, 0.71, plastic, 0, 0, 0, tv);
+    this.box(0.022, 0.42, 0.61, edge, 0.272, 0.035, 0, false, tv);
+    this.tvScreen = canvasTex(256, 192, (g) => { g.fillStyle = "#101b18"; g.fillRect(0, 0, 256, 192); }, false);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.47, 0.34), new THREE.MeshBasicMaterial({ map: this.tvScreen, toneMapped: false }));
+    screen.position.set(0.287, 0.245, -0.04); screen.rotation.y = Math.PI / 2; tv.add(screen);
+    for (let i = 0; i < 10; i++) this.box(0.018, 0.004, 0.07, plastic, 0.293, 0.17 + i * 0.015, 0.255, false, tv);
+    for (const y of [0.08, 0.39]) { const knob = this.cyl(0.022, 0.022, 0.018, brass, 0.294, y, 0.25, 12, tv); knob.rotation.z = Math.PI / 2; }
+    for (const z of [-0.16, 0.16]) this.cyl(0.003, 0.003, 0.42, brass, -0.12, 0.49, z, 6, tv).rotation.z = z < 0 ? 0.5 : -0.5;
+    this.box(0.33, 0.11, 0.55, plastic, 0.39, 0.16, 3.1);
+    this.box(0.015, 0.07, 0.22, brass, 0.566, 0.19, 3.1);
+    this.spot("tv", new THREE.Vector3(0.6, 0.85, 3.1), () => this.tvOn ? this.l("Выключить телевизор", "Turn off the TV") : this.l("Включить телевизор", "Turn on the TV"), () => true, () => { this.tvOn = !this.tvOn; this.sfx.click(); if (this.tvOn && !this.done.has("tv")) { this.done.add("tv"); this.say("a_tv"); } });
+
+    // Low polished table, lace runner and printed newspaper, all clear of the circulation path.
+    round(0.64, 0.05, 1.05, walnut, 2.2, 0.42, 3.1);
+    this.boxes.push([1.88, 2.56, 2.52, 3.63]);
+    for (const x of [1.94, 2.46]) for (const z of [2.67, 3.53]) this.box(0.045, 0.42, 0.045, edge, x, 0, z);
+    const lace = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.8), this.mat({ map: domesticTexture("lace"), transparent: true, alphaTest: 0.2, side: THREE.DoubleSide }));
+    lace.rotation.x = -Math.PI / 2; lace.position.set(2.2, 0.476, 3.1); this.scene.add(lace);
+    const newspaper = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.4), this.mat({ map: domesticTexture("newspaper") }));
+    newspaper.rotation.set(-Math.PI / 2, 0, 0.2); newspaper.position.set(2.24, 0.48, 3.3); this.scene.add(newspaper);
+    const cup = this.mat({ color: "#e4dec6", roughness: 0.3 });
+    this.cyl(0.043, 0.035, 0.09, cup, 2.07, 0.48, 2.82, 16);
+    this.cyl(0.035, 0.035, 0.003, this.mat({ color: "#37271b" }), 2.07, 0.572, 2.82, 16);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.006, 6, 12), cup); handle.position.set(2.12, 0.53, 2.82); this.scene.add(handle);
+    this.cyl(0.15, 0.18, 0.025, brass, 4.55, 0, 5.2);
+    this.cyl(0.013, 0.013, 1.48, brass, 4.55, 0.025, 5.2, 8);
+    this.cyl(0.16, 0.26, 0.33, this.mat({ map: fabricTex("#d2bc8e"), emissive: "#e5b175", emissiveIntensity: 0.45, side: THREE.DoubleSide }), 4.55, 1.43, 5.2, 24);
+    const wallRug = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.4), this.mat({ map: domesticTexture("rug") }));
+    wallRug.position.set(4.925, 1.7, 2.05); wallRug.rotation.y = -Math.PI / 2; this.scene.add(wallRug);
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(0.18, 32), this.mat({ map: canvasTex(256, 256, (g) => {
+      g.fillStyle = "#dcd7bf"; g.fillRect(0, 0, 256, 256); g.strokeStyle = "#383e35"; g.lineWidth = 6;
+      for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; g.beginPath(); g.moveTo(128 + Math.sin(a) * 94, 128 - Math.cos(a) * 94); g.lineTo(128 + Math.sin(a) * 106, 128 - Math.cos(a) * 106); g.stroke(); }
+      g.beginPath(); g.moveTo(106, 79); g.lineTo(128, 128); g.lineTo(50, 164); g.stroke();
+    }, false) })); clock.position.set(0.075, 2.08, 1.35); clock.rotation.y = Math.PI / 2; this.scene.add(clock);
+    this.cyl(0.01, 0.01, 0.32, brass, 2.4, H - 0.32, 3.1, 6);
+    for (let i = 0; i < 3; i++) { const a = i * Math.PI * 2 / 3; const x = 2.4 + Math.cos(a) * 0.25, z = 3.1 + Math.sin(a) * 0.25; this.cyl(0.09, 0.14, 0.13, this.mat({ color: "#ece1bc", emissive: "#dfbb7c", emissiveIntensity: 0.5 }), x, H - 0.46, z, 16); }
+    this.spot("window", new THREE.Vector3(3.5, 1.5, 0.3), () => this.l("Выглянуть в окно", "Look out the window"), () => this.done.has("phone"), () => { this.done.add("window"); this.say("a_window"); this.lightning.update(99); this.sfx.thunder(0.3, 1); });
   }
 
   private kitchen() {
-    const cab = this.mat({ map: woodTex("#c8b48a", "#8a7450"), roughness: 0.6 });
-    const top = this.mat({ color: "#7a6e60", roughness: 0.4 });
-    // counter along x=9
-    this.box(0.6, 0.85, 2.6, cab, 8.65, 0, 1.6, true);
-    this.box(0.64, 0.04, 2.6, top, 8.63, 0.85, 1.6);
-    this.box(0.35, 0.7, 2.0, cab, 8.78, 1.5, 1.4);
-    // sink + tap
-    const steel = this.mat({ color: "#c0c4c8", metalness: 0.9, roughness: 0.25 });
-    this.box(0.45, 0.02, 0.5, steel, 8.6, 0.885, 1.0);
-    this.cyl(0.012, 0.012, 0.25, steel, 8.85, 0.89, 1.0, 8);
-    // stove with kettle
-    this.box(0.6, 0.86, 0.55, this.mat({ color: "#e8e4dc", roughness: 0.3 }), 8.65, 0, 3.0 - 0.3, true);
-    for (const [dx, dz] of [[-0.12, -0.12], [0.12, 0.12], [-0.12, 0.12], [0.12, -0.12]]) this.cyl(0.07, 0.07, 0.01, this.mat({ color: "#222" }), 8.65 + dx, 0.86, 2.7 + dz, 14);
-    this.cyl(0.06, 0.09, 0.16, this.mat({ color: "#2f5a8a", roughness: 0.3, metalness: 0.2 }), 8.53, 0.87, 2.58, 16);
-    // rounded old fridge in the corner
-    const fridge = this.mat({ color: "#eeeae0", roughness: 0.25 });
-    this.box(0.65, 1.6, 0.65, fridge, 5.45, 0, 0.45, true);
-    this.box(0.03, 0.25, 0.04, steel, 5.75, 1.0, 0.8);
-    // table + stools + calendar
-    const tw = this.mat({ map: woodTex("#a07850", "#5a3c20"), roughness: 0.5 });
-    this.box(0.8, 0.04, 0.8, tw, 6.6, 0.72, 2.2, true);
-    this.box(0.08, 0.72, 0.08, tw, 6.6, 0, 2.2);
-    for (const [x, z] of [[6.0, 2.2], [7.2, 2.2]]) { this.box(0.36, 0.03, 0.36, tw, x, 0.45, z); this.box(0.05, 0.45, 0.05, tw, x, 0, z); }
-    const kettleLight = new THREE.PointLight("#ffd8a8", 0, 1, 2); kettleLight.position.set(6.6, 1.0, 2.2); this.scene.add(kettleLight);
-    const calendar = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.42), this.mat({ map: canvasTex(128, 180, (g) => {
-      g.fillStyle = "#efe6d0"; g.fillRect(0, 0, 128, 180); g.fillStyle = "#8a1a1a"; g.font = "bold 22px serif"; g.fillText("НОЯБРЬ", 16, 32);
-      g.fillStyle = "#222"; g.font = "12px serif"; for (let d = 1; d <= 30; d++) g.fillText(String(d), 10 + ((d - 1) % 7) * 16, 56 + Math.floor((d - 1) / 7) * 22);
-      g.strokeStyle = "#c00"; g.lineWidth = 2; g.beginPath(); g.arc(10 + 6 * 16 + 6, 56 + 1 * 22 - 4, 9, 0, 7); g.stroke();
-    }, false) }));
-    calendar.position.set(5.07, 1.6, 2.0); calendar.rotation.y = Math.PI / 2; this.scene.add(calendar);
+    const enamel = this.mat({ color: "#c3d0bb", roughness: 0.55 });
+    const timber = this.mat({ map: woodTex("#b6a073", "#6f624a"), roughness: 0.55 });
+    const metal = this.mat({ color: "#9ba8a6", metalness: 0.8, roughness: 0.3 });
+    const dark = this.mat({ color: "#303b37", roughness: 0.65 });
+    // Separate painted cupboards with real seams and handles, rather than one solid counter.
+    for (const z of [0.65, 1.35, 2.05]) {
+      this.box(0.57, 0.79, 0.65, enamel, 8.65, 0.05, z, true);
+      this.box(0.025, 0.63, 0.56, enamel, 8.348, 0.14, z);
+      this.box(0.04, 0.018, 0.13, metal, 8.325, 0.69, z + 0.13);
+      this.box(0.48, 0.06, 0.58, dark, 8.67, 0, z);
+      this.box(0.3, 0.65, 0.65, enamel, 8.78, 1.48, z);
+      this.box(0.03, 0.018, 0.12, metal, 8.61, 1.55, z + 0.15);
+    }
+    this.box(0.64, 0.05, 2.2, timber, 8.62, 0.84, 1.35);
+    this.box(0.44, 0.025, 0.52, metal, 8.6, 0.893, 0.9);
+    this.box(0.34, 0.008, 0.38, dark, 8.58, 0.92, 0.9);
+    this.cyl(0.015, 0.015, 0.19, metal, 8.8, 0.9, 0.9, 10);
+    const tap = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.014, 8, 14, Math.PI), metal); tap.rotation.y = Math.PI / 2; tap.position.set(8.73, 1.1, 0.9); this.scene.add(tap);
+    const stove = this.mat({ color: "#e0ddcb", roughness: 0.38 });
+    this.box(0.6, 0.84, 0.58, stove, 8.65, 0, 2.7, true);
+    this.box(0.025, 0.42, 0.42, dark, 8.337, 0.17, 2.7);
+    this.box(0.04, 0.035, 0.34, metal, 8.3, 0.63, 2.7);
+    for (const dz of [-0.18, -0.06, 0.06, 0.18]) { const knob = this.cyl(0.018, 0.018, 0.02, dark, 8.32, 0.75, 2.7 + dz, 10); knob.rotation.z = Math.PI / 2; }
+    for (const dx of [-0.14, 0.14]) for (const dz of [-0.14, 0.14]) this.cyl(0.071, 0.071, 0.015, dark, 8.65 + dx, 0.842, 2.7 + dz, 16);
+    const kettle = this.mat({ color: "#557a87", metalness: 0.25, roughness: 0.4 });
+    this.cyl(0.085, 0.095, 0.14, kettle, 8.52, 0.87, 2.57, 20);
+    this.cyl(0.075, 0.04, 0.035, metal, 8.52, 1.01, 2.57, 16);
+    const kh = new THREE.Mesh(new THREE.TorusGeometry(0.072, 0.012, 8, 16, Math.PI), dark); kh.position.set(8.52, 1.045, 2.57); this.scene.add(kh);
+    this.box(0.65, 1.58, 0.65, stove, 5.45, 0, 0.45, true);
+    for (const y of [0.05, 1.06]) this.box(0.6, y > 1 ? 0.46 : 0.97, 0.035, stove, 5.45, y, 0.793);
+    for (const y of [0.75, 1.18]) this.box(0.035, 0.19, 0.04, metal, 5.71, y, 0.82);
+    this.sign("МИР", 5.45, 1.48, 0.82, 0.11, 0.035, 0, this.scene, "#505a4e", "#e0ddcb");
+    this.box(0.83, 0.04, 0.8, timber, 6.6, 0.72, 2.2, true);
+    for (const x of [6.26, 6.94]) for (const z of [1.87, 2.53]) this.box(0.045, 0.72, 0.045, timber, x, 0, z);
+    const cloth = fabricTex("#c2bc9b");
+    this.box(0.68, 0.008, 0.72, this.mat({ map: cloth }), 6.6, 0.763, 2.2);
+    for (const x of [6.0, 7.2]) {
+      this.box(0.36, 0.055, 0.36, enamel, x, 0.43, 2.2);
+      for (const dx of [-0.13, 0.13]) for (const dz of [-0.13, 0.13]) this.box(0.035, 0.43, 0.035, timber, x + dx, 0, 2.2 + dz);
+    }
+    const plate = this.mat({ color: "#e5ddc2", roughness: 0.35 });
+    this.cyl(0.13, 0.1, 0.016, plate, 6.65, 0.78, 2.2, 24);
+    for (let i = 0; i < 3; i++) this.cyl(0.035, 0.03, 0.09, this.mat({ color: ["#726346", "#748b6c", "#c7ba84"][i] }), 8.6, 0.9, 1.55 + i * 0.17, 12);
+    const calendar = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.46), this.mat({ map: canvasTex(256, 320, (g) => {
+      g.fillStyle = "#e7dec6"; g.fillRect(0, 0, 256, 320); g.fillStyle = "#7d343b"; g.fillRect(0, 0, 256, 66); g.fillStyle = "#f1e6ca"; g.font = "bold 27px Georgia"; g.fillText(this.l("НОЯБРЬ 1996", "NOVEMBER 1996"), 16, 43);
+      g.fillStyle = "#37433a"; g.font = "20px Georgia"; for (let d = 1; d <= 30; d++) g.fillText(String(d), 18 + ((d - 1) % 7) * 33, 114 + Math.floor((d - 1) / 7) * 38);
+      g.strokeStyle = "#a83d3a"; g.lineWidth = 3; g.beginPath(); g.arc(18 + 2 * 33 + 10, 114 + 3 * 38 - 6, 17, 0, Math.PI * 2); g.stroke();
+    }, false) })); calendar.position.set(5.07, 1.65, 2.0); calendar.rotation.y = Math.PI / 2; this.scene.add(calendar);
   }
 
   private hall() {
@@ -557,6 +616,11 @@ export class Apartment {
     const pad = this.mat({ map: quiltTex(), roughness: 0.7 });
     const leaf = this.box(0.06, 2.08, 0.94, pad, 0, 0, 0.47, false, this.door);
     leaf.position.x = 0;
+    // Deep architraves and an overlapping threshold seal the old 3 cm edge gap.
+    const trim = this.mat({ map: woodTex("#d1c7ae", "#a59a83"), roughness: 0.65 });
+    for (const z of [3.98, 5.02]) this.box(0.2, 2.17, 0.1, trim, 8.98, 0, z);
+    this.box(0.2, 0.1, 1.14, trim, 8.98, 2.08, 4.5);
+    this.box(0.26, 0.025, 1.12, trim, 8.98, 0, 4.5);
     const brass = this.mat({ color: "#c0a050", metalness: 0.8, roughness: 0.3 });
     this.box(0.06, 0.03, 0.14, brass, -0.05, 1.0, 0.82, false, this.door);
     this.cyl(0.015, 0.015, 0.03, brass, -0.04, 1.55, 0.47, 8, this.door).rotation.z = Math.PI / 2;
@@ -1015,7 +1079,7 @@ export class Apartment {
       for (let i = 0; i < 90; i++) { g.strokeStyle = `rgba(200,215,230,${0.12 + Math.random() * 0.18})`; g.lineWidth = 1 + Math.random() * 2.5; const x = Math.random() * 256, y = Math.random() * 280; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.random() * 4 - 2, y + 15 + Math.random() * 50); g.stroke(); }
       g.fillStyle = "#3b2a1f"; g.fillRect(124, 0, 8, 280); g.fillRect(0, 120, 256, 8);
     }, false);
-    const glassWin = new THREE.MeshBasicMaterial({ map: frosted, color: "#30404f" });
+    const glassWin = new THREE.MeshBasicMaterial({ map: frosted, color: "#c4d4ca", side: THREE.DoubleSide });
     this.stairWin = glassWin;
     const chuteNote = canvasTex(256, 200, (g) => paintNotice(g, 256, 200, NOTICES.chute, this.lang), false);
     const chuteNoteM = this.mat({ map: chuteNote, roughness: 0.95 });
@@ -1026,7 +1090,11 @@ export class Apartment {
     for (const o of [-2 * H, -H, 0, H]) {
       const i = Math.round(o / H);
       // outer walls of this storey
-      wall(0.14, 2.5, 9.14, 9.25, o, false); wall(0.14, 2.5, 15.8, 9.25, o, false); wall(6.8, 0.14, 12.5, 10.5, o, false);
+      wall(0.14, 2.5, 9.14, 9.25, o, false); wall(6.8, 0.14, 12.5, 10.5, o, false);
+      // Real repeated window openings, including the part crossing a storey boundary.
+      wall(0.14, 0.72, 15.8, 8.36, o, false);
+      wall(0.14, 0.72, 15.8, 10.14, o, false);
+      wall(0.14, 1.06, 15.8, 9.25, o + 0.75, false, H - 1.1);
       if (o !== 0) { wall(0.46, 0.14, 9.37, 8, o, false); wall(5.2, 0.14, 13.4, 8, o, false); this.box(1.2, H - 2.1, 0.14, plaster, 10.2, o + 2.1, 8); }
       // landings
       this.box(2.0, 0.14, 2.36, slab, 10.2, o - 0.14, 9.25);
@@ -1049,9 +1117,12 @@ export class Apartment {
       // frosted window on the mid landing: frame, sill, a dusty plant and a jar of cigarette ends
       const wy = o - 1.35;
       const win = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.1), glassWin);
-      win.position.set(15.72, wy + 1.55, 9.25); win.rotation.y = -Math.PI / 2; this.scene.add(win);
+      win.position.set(15.8, wy + 1.55, 9.25); win.rotation.y = -Math.PI / 2; this.scene.add(win);
       for (const dz of [-0.53, 0.53]) this.box(0.06, 1.18, 0.06, rail, 15.7, wy + 0.97, 9.25 + dz);
-      this.box(0.06, 0.06, 1.12, rail, 15.7, wy + 2.1, 9.25);
+      this.box(0.12, 0.06, 1.12, rail, 15.72, wy + 2.1, 9.25);
+      this.box(0.12, 0.06, 1.12, rail, 15.72, wy + 0.97, 9.25);
+      this.box(0.1, 1.1, 0.04, rail, 15.72, wy + 1.0, 9.25);
+      this.box(0.1, 0.04, 1.06, rail, 15.72, wy + 1.62, 9.25);
       this.box(0.26, 0.04, 1.2, this.mat({ color: "#d6d2c4", roughness: 0.5 }), 15.62, wy + 0.97, 9.25);
       this.cyl(0.07, 0.055, 0.13, potM, 15.62, wy + 1.01, 9.62, 10);
       for (let k = 0; k < 4; k++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), plantM); leaf.scale.set(1, 0.5, 1.6); leaf.position.set(15.62 + (k % 2 ? 0.03 : -0.03), wy + 1.18 + k * 0.025, 9.62 + (k - 1.5) * 0.04); leaf.rotation.y = k; this.scene.add(leaf); }
@@ -1411,7 +1482,7 @@ export class Apartment {
         crank: this.l("1 км до парка · Попробовать завести двигатель", "1 km to the park · Try restarting the engine"),
         leaveCar: this.l("Выйти из машины", "Get out of the car"),
         hood: this.l("Открыть капот и осмотреть двигатель", "Open the bonnet and check the engine"),
-        triangle: this.l("Взять знак в багажнике и поставить позади машины", "Take the triangle from the boot and place it behind the car"),
+        triangle: this.holdingTriangle ? this.l("Поставить знак в отмеченном месте позади машины", "Place the triangle at the marked spot behind the car") : this.l("Открыть багажник и взять аварийный знак", "Open the boot and take the warning triangle"),
         walk: this.l("Идти к остановке, затем по указателю в лес", "Walk to the bus stop, then follow the sign into the woods"),
         gate: this.l("Открыть ворота и войти в парк", "Open the gate and enter the park"),
       };
@@ -1534,7 +1605,7 @@ export class Apartment {
     if (this.hudT <= 0) {
       this.hudT = 0.1;
       const note = this.reading ? { title: this.reading.title, body: this.reading.body } : null;
-      this.cb.onHud({ prompt: note ? "" : this.focus?.label() ?? "", objective: this.objective(), subtitle: note ? "" : this.subtitle, paused: paused && !this.finished, flashlight: this.flashOn, fade: this.fade, note });
+      this.cb.onHud({ prompt: note ? "" : this.focus?.label() ?? "", objective: this.objective(), subtitle: note ? "" : this.subtitle, paused: paused && !this.finished, flashlight: this.flashOn, fade: this.fade, note, waypoint: this.triangleWaypoint() });
     }
   };
 
@@ -1608,9 +1679,10 @@ export class Apartment {
       if (s.zone && s.zone !== zone) continue;
       const to = s.pos.clone().sub(this.camera.position);
       const d = to.length();
-      if (d > (s.id === "gate" ? 3 : 2.2)) continue;
+      if (d > (s.id === "gate" || s.id === "placeTriangle" ? 3 : 2.2)) continue;
       const dot = to.normalize().dot(fwd);
-      if (dot > best) { best = dot; this.focus = s; }
+      if (s.id === "placeTriangle" && dot > 0.45) { this.focus = s; best = dot; }
+      else if (dot > best) { best = dot; this.focus = s; }
     }
   }
 
@@ -1787,6 +1859,17 @@ export class Apartment {
     this.exitDoors.forEach((p, i) => { p.rotation.y = (i === 0 ? 1 : -1) * this.exitOpen * 1.25; });
   }
 
+  private triangleWaypoint() {
+    if (!this.holdingTriangle || this.trianglePlaced || this.departure !== "walk") return null;
+    const target = this.car.group.localToWorld(new THREE.Vector3(0, 0.8, TRIANGLE_DISTANCE));
+    const distance = Math.round(Math.hypot(target.x - this.pos.x, target.z - this.pos.z));
+    const forward = this.camera.getWorldDirection(new THREE.Vector3());
+    const behind = target.clone().sub(this.camera.position).dot(forward) <= 0;
+    const projected = target.clone().project(this.camera);
+    const side = target.clone().applyMatrix4(this.camera.matrixWorldInverse).x;
+    return { x: behind ? (side < 0 ? 0.08 : 0.92) : THREE.MathUtils.clamp((projected.x + 1) / 2, 0.08, 0.92), y: behind ? 0.5 : THREE.MathUtils.clamp((1 - projected.y) / 2, 0.18, 0.72), distance, behind };
+  }
+
   private roadProgress() {
     return { cranks: this.cranks, outside: this.departure === "walk", hood: this.done.has("engineChecked"), triangle: this.trianglePlaced,
       atGate: Boolean(this.road) && Math.hypot(this.pos.x - ROAD_ORIGIN.x - GATE[0], this.pos.z - GATE[1]) < 7 };
@@ -1856,10 +1939,17 @@ export class Apartment {
     const red = new THREE.MeshBasicMaterial({ color: "#bc3022" });
     const caseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.06, 0.12), red); this.trunkTriangle.add(caseMesh);
     this.trunkTriangle.position.set(0, 0.87, 1.7); this.car.group.add(this.trunkTriangle); this.trunkTriangle.visible = false;
-    carSpot("takeTriangle", new THREE.Vector3(0, 0.9, 1.7), () => this.l("Взять аварийный знак", "Take the warning triangle"), () => outside() && this.trunkUp && !this.holdingTriangle && !this.trianglePlaced && this.done.has("engineChecked"), () => { this.holdingTriangle = true; this.sfx.pickup(); this.caption("Знак нужно поставить позади машины, чтобы меня заметили заранее.", "Put the triangle behind the car so approaching drivers can see it in time."); });
-    carSpot("placeTriangle", new THREE.Vector3(0, 0.4, 16), () => this.l("Поставить аварийный знак", "Place the warning triangle"), () => outside() && this.holdingTriangle, () => {
+    carSpot("takeTriangle", new THREE.Vector3(0, 0.9, 1.7), () => this.l("Взять аварийный знак", "Take the warning triangle"), () => outside() && this.trunkUp && this.trunkAngle > 0.8 && !this.holdingTriangle && !this.trianglePlaced && this.done.has("engineChecked"), () => { this.holdingTriangle = true; this.sfx.pickup(); this.caption("Отойду на 16 метров назад по обочине. Место отмечено — поставлю знак там.", "Walk 16 metres back along the shoulder. Place the triangle at the marked spot."); });
+    const guide = new THREE.Group();
+    const guideMaterial = new THREE.MeshBasicMaterial({ color: "#dfc67e", transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.63, 0.7, 40), guideMaterial); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.055; guide.add(ring);
+    const preview = this.road.triangle.clone();
+    preview.traverse((o) => { if (o instanceof THREE.Sprite) o.visible = false; else if (o instanceof THREE.Mesh) o.material = guideMaterial; });
+    guide.add(preview); guide.visible = false;
+    this.triangleGuide = guide; this.road.group.add(guide);
+    carSpot("placeTriangle", new THREE.Vector3(0, 0.8, TRIANGLE_DISTANCE), () => this.l("Поставить аварийный знак", "Place the warning triangle"), () => outside() && this.holdingTriangle, () => {
       this.holdingTriangle = false; this.trianglePlaced = true; this.sfx.clunk();
-      this.road.group.add(this.road.triangle); this.road.triangle.position.copy(this.car.group.localToWorld(new THREE.Vector3(0, 0, 16))).sub(ROAD_ORIGIN); this.road.triangle.position.y = 0.04; this.road.triangle.rotation.y = this.carYaw;
+      this.road.group.add(this.road.triangle); this.road.triangle.position.copy(this.car.group.localToWorld(new THREE.Vector3(0, 0, TRIANGLE_DISTANCE))).sub(ROAD_ORIGIN); this.road.triangle.position.y = 0.04; this.road.triangle.rotation.y = this.carYaw;
       this.caption("Машину видно. До парка около километра. У остановки должна быть тропа.", "The car is marked. About a kilometre to the park. There should be a trail by the bus stop.");
     });
     const noteIds = ["timetable", "missing", "watchman", "poster", "ticket"] as const;
@@ -1899,9 +1989,14 @@ export class Apartment {
       this.car.wheels.forEach(w => { w.rotation.x = -this.roadDriven / 0.33; });
       if (this.roadDriven >= STOP_AT - 0.02) { this.roadDriven = STOP_AT; this.roadSpeed = 0; this.placeRoadCar(); this.advanceDeparture("stall"); this.caption("Машина остановилась. Попробую ещё раз повернуть ключ.", "The car stops. I'll try the key once more."); }
     }
-    this.hoodAngle = THREE.MathUtils.damp(this.hoodAngle, this.hoodUp ? 1 : 0, 4, dt);
-    this.trunkAngle = THREE.MathUtils.damp(this.trunkAngle, this.trunkUp ? 1 : 0, 4, dt);
-    this.car.hood.rotation.x = -this.hoodAngle * 1.15; this.car.trunk.rotation.x = this.trunkAngle * 1.1;
+    this.hoodAngle = panelProgress(this.hoodAngle, this.hoodUp, dt);
+    this.trunkAngle = panelProgress(this.trunkAngle, this.trunkUp, dt);
+    this.car.hood.rotation.x = panelAngle("hood", this.hoodAngle); this.car.trunk.rotation.x = panelAngle("trunk", this.trunkAngle);
+    if (this.triangleGuide) {
+      this.triangleGuide.visible = this.departure === "walk" && this.holdingTriangle && !this.trianglePlaced;
+      this.triangleGuide.position.copy(this.car.group.localToWorld(new THREE.Vector3(0, 0, TRIANGLE_DISTANCE))).sub(ROAD_ORIGIN);
+      this.triangleGuide.position.y = 0.045; this.triangleGuide.rotation.y = this.carYaw;
+    }
     this.trunkTriangle.visible = this.trunkUp && !this.holdingTriangle && !this.trianglePlaced;
     this.gateAngle = THREE.MathUtils.damp(this.gateAngle, this.gateOpening ? 1 : 0, 3, dt);
     if (this.carFit?.update(dt, t, { wipers: this.wipers, hazard: this.hazard && !this.batteryDead, steam: this.engineDead ? 0.8 : 0, hoodOpen: this.hoodAngle })) this.sfx.wiper();
